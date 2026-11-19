@@ -2,10 +2,11 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
-#include "header.h"
+#include "heap.h"
+#include "os.h"
 #include <stdint.h>
 
-header_t *head = NULL, *tail = NULL;
+static heap_t heap;
 static pthread_mutex_t global_malloc_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *malloc(size_t size) {
@@ -20,7 +21,7 @@ void *malloc(size_t size) {
     size = JMALLOC_ALIGN_UP(size);
 
     pthread_mutex_lock(&global_malloc_lock);
-    header_t *header = get_free_block(size);
+    header_t *header = heap_find_free_block(&heap, size);
     if (header) {
         header->is_free = 0;
         pthread_mutex_unlock(&global_malloc_lock);
@@ -28,46 +29,16 @@ void *malloc(size_t size) {
         return (void*)(header + 1);
     }
 
-    // Make sure the new block starts on an aligned address
-    uintptr_t start = (uintptr_t)sbrk(0);
-    size_t pad = JMALLOC_ALIGN_UP(start) - start;
-    if (pad && sbrk(pad) == (void *)-1) {
-        pthread_mutex_unlock(&global_malloc_lock);
-        return NULL;
-    }
-
     size_t total_size = sizeof(header_t) + size;
-    void *block = sbrk(total_size);
+    void *block = os_grow_memory(total_size);
     if (block == (void*) -1) {
         pthread_mutex_unlock(&global_malloc_lock);
         return NULL;
     }
 
-    header = block;
-    header->size = size;
-    header->is_free = 0;
-    header->next = NULL;
-    if (!head) {
-        head = header;
-    }
-    if (tail) {
-        tail->next = header;
-    }
-    tail = header;
+    header = heap_add_block(&heap, block, size);
     pthread_mutex_unlock(&global_malloc_lock);
     return (void*)(header + 1);
-}
-
-header_t *get_free_block(size_t size) {
-    header_t *curr = head;
-    while(curr) {
-        if (curr->is_free && curr->size >= size) {
-            return curr;
-        }
-
-        curr = curr->next;
-    }
-    return NULL;
 }
 
 void free(void *block) {
@@ -79,24 +50,15 @@ void free(void *block) {
     header_t *header = (header_t*)block - 1;
     void *program_break = sbrk(0);
     void *block_end = (char*)(block) + header->size;
+
+    // If block is not at the end of the memory, mark it as free and reuse
     if (block_end != program_break) {
         header->is_free = 1;
         pthread_mutex_unlock(&global_malloc_lock);
         return;
     }
 
-    if (head == tail) {
-        head = tail = NULL;
-    } else {
-        header_t *tmp = head;
-        while (tmp) {
-            if (tmp->next == tail) {
-                tmp->next = NULL;
-                tail = tmp;
-            }
-            tmp = tmp->next;
-        }
-    }
+    heap_remove_tail(&heap);
     sbrk(0 - sizeof(header_t) - header->size);
     pthread_mutex_unlock(&global_malloc_lock);
     return;

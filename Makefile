@@ -40,6 +40,7 @@ clean:
 	rm -rf build
 
 $(STATIC_LIB): $(LIB_OBJS)
+	@rm -f $@
 	$(AR) rcs $@ $^
 
 $(SHARED_LIB): $(LIB_OBJS)

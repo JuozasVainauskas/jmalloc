@@ -1,5 +1,5 @@
-#ifndef JMALLOC_HEADER_H
-#define JMALLOC_HEADER_H
+#ifndef JMALLOC_HEAP_H
+#define JMALLOC_HEAP_H
 
 #include <stddef.h>
 
@@ -18,7 +18,14 @@ typedef struct header {
     struct header *next;
 } header_t;
 
-header_t *get_free_block(size_t size);
+typedef struct heap {
+    header_t *head;
+    header_t *tail;
+} heap_t;
+
+header_t *heap_find_free_block(heap_t *heap, size_t size);
+header_t *heap_add_block(heap_t *heap, void *block, size_t size);
+void heap_remove_tail(heap_t *heap);
 
 static_assert((JMALLOC_ALIGNMENT & (JMALLOC_ALIGNMENT - 1)) == 0,
                "alignment must be a power of two");

@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "../src/header.h"
+#include "../src/heap.h"
 
 int main(void) {
     void* ptr = malloc(sizeof(5 * sizeof(int)));
